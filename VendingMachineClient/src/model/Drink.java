@@ -88,4 +88,12 @@ public class Drink {
     public Map<Integer, Map<Integer, Map<Integer, Integer>>> getSalesRecord() {
         return salesRecord;
     }
+
+    public void setStock(int stock) {
+        this.stock.clear(); // 기존 재고 비움
+        for (int i = 0; i < stock; i++) {
+            this.stock.add(1); // 지정된 수량만큼 재고 추가
+        }
+    }
+
 }

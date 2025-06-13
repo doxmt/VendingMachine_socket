@@ -7,12 +7,17 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.time.LocalDate;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.List;
+import db.MongoDBManager;
+import org.bson.Document;
+
 
 public class AdminGUI extends JFrame {
     private VendingMachineGUI vendingMachineGUI;
+
 
     public AdminGUI(VendingMachineGUI vendingMachineGUI) {
         this.vendingMachineGUI = vendingMachineGUI;
@@ -32,6 +37,11 @@ public class AdminGUI extends JFrame {
         JButton collectMoneyButton = new JButton("수금");
         JButton changeItemInfoButton = new JButton("음료 가격/이름 변경");
         JButton viewRecentPurchasesButton = new JButton("최근 구매 내역");
+        JButton refillChangeButton = new JButton("거스름돈 보충");
+
+
+        adminPanel.add(refillChangeButton);
+
 
         adminPanel.add(changePasswordButton);
         adminPanel.add(dailySalesButton);
@@ -99,6 +109,14 @@ public class AdminGUI extends JFrame {
             }
         });
 
+        refillChangeButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                refillChangeTo10Each();
+            }
+        });
+
+
         viewRecentPurchasesButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
@@ -116,6 +134,34 @@ public class AdminGUI extends JFrame {
         add(adminPanel);
         setVisible(true);
     }
+
+    private void refillChangeTo10Each() {
+        int vmNumber = vendingMachineGUI.getVmNumber();
+        MongoDBManager dbManager = MongoDBManager.getInstance();
+
+        Document changeDoc = new Document();
+        changeDoc.append("10", 10);
+        changeDoc.append("50", 10);
+        changeDoc.append("100", 10);
+        changeDoc.append("500", 10);
+        changeDoc.append("1000", 10);
+        changeDoc.append("5000", 10);
+
+        // DB에 저장
+        dbManager.updateChangeState(vmNumber, changeDoc);
+
+        // 관리자 작업 기록
+        Document detail = new Document("10", 10)
+                .append("50", 10)
+                .append("100", 10)
+                .append("500", 10)
+                .append("1000", 10)
+                .append("5000", 10);
+        dbManager.insertAdminOperation(vmNumber, "거스름돈 보충", "change", detail);
+
+        JOptionPane.showMessageDialog(this, "각 화폐 단위를 10개로 보충했습니다.", "보충 완료", JOptionPane.INFORMATION_MESSAGE);
+    }
+
 
     private void changePassword() {
         JPanel panel = new JPanel(new GridLayout(2, 2));
@@ -285,52 +331,85 @@ public class AdminGUI extends JFrame {
                     try {
                         int quantity = Integer.parseInt(quantityStr);
                         drink.restock(quantity);
+
+                        // DB 반영
+                        MongoDBManager dbManager = MongoDBManager.getInstance();
+                        int vmNumber = vendingMachineGUI.getVmNumber(); // 자판기 번호 가져오기
+                        dbManager.upsertInventory(vmNumber, drink.getName(), drink.getPrice(), drink.getStock(), LocalDate.now());
+
+                        // 관리자 작업 기록
+                        Document detail = new Document("restockedAmount", quantity)
+                                .append("newStock", drink.getStock());
+                        dbManager.insertAdminOperation(vmNumber, "재고 보충", drink.getName(), detail);
+
+                        // ✅ 자판기 로컬 정보 동기화
+                        vendingMachineGUI.reloadDrinksFromDB();
+
                         SwingUtilities.invokeLater(() -> {
                             JOptionPane.showMessageDialog(this, drink.getName() + "의 재고가 " + quantity + "개 추가되었습니다.", "재고 보충 완료", JOptionPane.INFORMATION_MESSAGE);
                             vendingMachineGUI.updateButtonColors();
                         });
                     } catch (NumberFormatException e) {
-                        SwingUtilities.invokeLater(() -> 
-                            JOptionPane.showMessageDialog(this, "유효한 수량을 입력하세요.", "입력 오류", JOptionPane.ERROR_MESSAGE)
+                        SwingUtilities.invokeLater(() ->
+                                JOptionPane.showMessageDialog(this, "유효한 수량을 입력하세요.", "입력 오류", JOptionPane.ERROR_MESSAGE)
                         );
                     }
                 } else {
-                    SwingUtilities.invokeLater(() -> 
-                        JOptionPane.showMessageDialog(this, "해당 음료를 찾을 수 없습니다.", "오류", JOptionPane.ERROR_MESSAGE)
+                    SwingUtilities.invokeLater(() ->
+                            JOptionPane.showMessageDialog(this, "해당 음료를 찾을 수 없습니다.", "오류", JOptionPane.ERROR_MESSAGE)
                     );
                 }
             }
         }).start();
     }
 
+
     private void collectMoney() {
         new Thread(() -> {
-            Money money = vendingMachineGUI.getMoney(); //수금작업에 멀티스레드 사용
+            MongoDBManager dbManager = MongoDBManager.getInstance();
+            int vmNumber = vendingMachineGUI.getVmNumber();
 
-            int returned5000Won = Math.max(0, money.get5000WonCount() - 10);
-            int returned1000Won = Math.max(0, money.get1000WonCount() - 10);
-            int returned500Won = Math.max(0, money.get500WonCount() - 10);
-            int returned100Won = Math.max(0, money.get100WonCount() - 10);
-            int returned50Won = Math.max(0, money.get50WonCount() - 10);
-            int returned10Won = Math.max(0, money.get10WonCount() - 10);
+            // 💾 DB에서 보관된 돈 가져오기
+            Document storedMoney = dbManager.getStoredMoney(vmNumber);
+            if (storedMoney == null || storedMoney.isEmpty()) {
+                SwingUtilities.invokeLater(() ->
+                        JOptionPane.showMessageDialog(this, "보관된 금액이 없습니다.", "수금 실패", JOptionPane.WARNING_MESSAGE)
+                );
+                return;
+            }
 
-            money.use5000Won(returned5000Won);
-            money.use1000Won(returned1000Won);
-            money.use500Won(returned500Won);
-            money.use100Won(returned100Won);
-            money.use50Won(returned50Won);
-            money.use10Won(returned10Won);
+            // 💸 수금 상세 내역 생성
+            int totalCollected = 0;
+            Document detail = new Document();
+            for (String denomStr : storedMoney.keySet()) {
+                try {
+                    int denom = Integer.parseInt(denomStr);
+                    int count = storedMoney.getInteger(denomStr, 0);
+                    totalCollected += denom * count;
+                    detail.append(denomStr + "원", count);
+                } catch (NumberFormatException ex) {
+                    // 무시
+                }
+            }
+            detail.append("총 수금", totalCollected);
 
-            int totalReturned = returned5000Won * 5000 + returned1000Won * 1000 + returned500Won * 500 + returned100Won * 100 + returned50Won * 50 + returned10Won * 10;
+            // ✅ DB에 수금 로그 기록
+            dbManager.insertAdminOperation(vmNumber, "collect", "money", detail);
+            dbManager.resetStoredMoney(vmNumber); // 저장된 돈 초기화
 
-            String message = String.format("수금 완료:\n5000원: %d개\n1000원: %d개\n500원: %d개\n100원: %d개\n50원: %d개\n10원: %d개\n총 수금 금액: %d원",
-                    returned5000Won, returned1000Won, returned500Won, returned100Won, returned50Won, returned10Won, totalReturned);
+            // ✅ 팝업 메시지
+            StringBuilder msg = new StringBuilder("수금 완료:\n");
+            for (Map.Entry<String, Object> entry : detail.entrySet()) {
+                msg.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+            }
 
-            SwingUtilities.invokeLater(() -> 
-                JOptionPane.showMessageDialog(this, message, "수금 완료", JOptionPane.INFORMATION_MESSAGE)
+            SwingUtilities.invokeLater(() ->
+                    JOptionPane.showMessageDialog(this, msg.toString(), "수금 완료", JOptionPane.INFORMATION_MESSAGE)
             );
         }).start();
     }
+
+
 
 
     private void changeItemInfo() {
@@ -345,13 +424,48 @@ public class AdminGUI extends JFrame {
                 if (drink.getName().equals(selectedDrink)) {
                     String newName = JOptionPane.showInputDialog(this, "새 음료 이름을 입력하세요.", drink.getName());
                     String newPriceStr = JOptionPane.showInputDialog(this, "새 음료 가격을 입력하세요.", drink.getPrice());
+
+                    // 🚫 입력 취소 시 중단
+                    if (newName == null || newPriceStr == null) return;
+
                     try {
                         int newPrice = Integer.parseInt(newPriceStr);
                         if (newPrice % 10 != 0) {
                             throw new NumberFormatException("가격은 10원 단위여야 합니다.");
                         }
+
+                        // ✅ 이름 중복 검사
+                        boolean duplicate = Arrays.stream(vendingMachineGUI.drinks)
+                                .anyMatch(d -> d.getName().equals(newName) && !d.getName().equals(selectedDrink));
+                        if (duplicate) {
+                            JOptionPane.showMessageDialog(this, "이미 존재하는 음료 이름입니다.", "이름 중복", JOptionPane.ERROR_MESSAGE);
+                            return;
+                        }
+
+                        // 로컬 데이터 수정
                         drink.setName(newName);
                         drink.setPrice(newPrice);
+
+                        MongoDBManager dbManager = MongoDBManager.getInstance();
+                        int vmNumber = vendingMachineGUI.getVmNumber();
+
+                        // drinks 컬렉션 업데이트
+                        dbManager.getDrinksCollection().updateOne(
+                                new org.bson.Document("vmNumber", vmNumber).append("name", selectedDrink),
+                                new org.bson.Document("$set", new org.bson.Document("name", newName).append("defaultPrice", newPrice))
+                        );
+
+                        // inventory 컬렉션도 업데이트
+                        dbManager.getInventoryCollection().updateMany(
+                                new org.bson.Document("vmNumber", vmNumber).append("drinkName", selectedDrink),
+                                new org.bson.Document("$set", new org.bson.Document("drinkName", newName).append("price", newPrice))
+                        );
+
+                        vendingMachineGUI.reloadDrinksFromDB();
+
+                        // sales 컬렉션도 업데이트
+
+
                         JOptionPane.showMessageDialog(this, "음료 정보가 성공적으로 변경되었습니다.", "변경 완료", JOptionPane.INFORMATION_MESSAGE);
                         vendingMachineGUI.updateButtonColors();
                     } catch (NumberFormatException ex) {
@@ -362,6 +476,8 @@ public class AdminGUI extends JFrame {
             }
         }
     }
+
+
 
     private void viewLastPurchase() {
         StringBuilder message = new StringBuilder("최근 구매 내역:\n");

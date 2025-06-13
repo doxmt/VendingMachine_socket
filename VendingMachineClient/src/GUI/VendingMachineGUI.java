@@ -2,6 +2,7 @@ package GUI;
 
 import model.Drink;
 import model.Money;
+import org.bson.Document;
 
 import javax.swing.*;
 import javax.swing.border.Border;
@@ -11,9 +12,16 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.time.LocalDate;
 import java.util.Map;
+import db.MongoDBManager;
+import java.util.HashMap;
+import java.util.Map;
 
 public class VendingMachineGUI extends JFrame {
     private int vmNumber; // 자판기 번호 저장
+    public int getVmNumber() {
+        return this.vmNumber;
+    }
+
 
     private JLabel currentAmountLabel;
     private int currentAmount;
@@ -29,21 +37,27 @@ public class VendingMachineGUI extends JFrame {
 
     public VendingMachineGUI(int vmNumber) {
         this.vmNumber = vmNumber;
+
+        MongoDBManager dbManager = MongoDBManager.getInstance();
+        reloadDrinksFromDB();
+        if (!dbManager.hasChangeData(vmNumber)) {
+            Map<String, Integer> initialChange = new HashMap<>();
+            initialChange.put("5000", 10);
+            initialChange.put("1000", 10);
+            initialChange.put("500", 10);
+            initialChange.put("100", 10);
+            initialChange.put("50", 10);
+            initialChange.put("10", 10);
+
+            dbManager.updateChangeStorage(vmNumber, new Document(initialChange));
+        }
         setTitle("음료 자판기 " + vmNumber);
         setSize(700, 800);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        currentAmount = dbManager.getCurrentAmount(vmNumber);
+
 
         Container c = getContentPane();
-
-        // 음료 초기화
-        drinks = new Drink[] {
-            new Drink("물", 450),
-            new Drink("커피", 500),
-            new Drink("이온 음료", 550),
-            new Drink("고급 커피", 700),
-            new Drink("탄산 음료", 750),
-            new Drink("특화 음료", 800)
-        };
 
         // 자판기 돈 초기화
         money = new Money();
@@ -63,6 +77,8 @@ public class VendingMachineGUI extends JFrame {
     public Money getMoney() {
         return money;
     }
+
+
 
     private JPanel createMainPanel() {
         JPanel p1 = new JPanel();
@@ -178,29 +194,37 @@ public class VendingMachineGUI extends JFrame {
                         if (currentAmount + denomination <= MAX_AMOUNT) {
                             currentAmount += denomination;
                             currentAmountLabel.setText("현재 금액: " + currentAmount + "원");
+                            MongoDBManager.getInstance().updateCurrentAmount(vmNumber, currentAmount);
                             updateButtonColors(); // 금액 변경 후 버튼 색상 업데이트
 
                             // 각 화폐 단위의 개수를 증가시킴
                             switch (denomination) {
                                 case 10:
                                     money.add10Won(1);
+                                    MongoDBManager.getInstance().incrementStoredMoney(vmNumber, 10, 1);
                                     break;
                                 case 50:
                                     money.add50Won(1);
+                                    MongoDBManager.getInstance().incrementStoredMoney(vmNumber, 50, 1);
                                     break;
                                 case 100:
                                     money.add100Won(1);
+                                    MongoDBManager.getInstance().incrementStoredMoney(vmNumber, 100, 1);
                                     break;
                                 case 500:
                                     money.add500Won(1);
+                                    MongoDBManager.getInstance().incrementStoredMoney(vmNumber, 500, 1);
                                     break;
                                 case 1000:
                                     money.add1000Won(1);
+                                    MongoDBManager.getInstance().incrementStoredMoney(vmNumber, 1000, 1);
                                     break;
                                 case 5000:
                                     money.add5000Won(1);
+                                    MongoDBManager.getInstance().incrementStoredMoney(vmNumber, 5000, 1);
                                     break;
                             }
+
                         } else {
                             JOptionPane.showMessageDialog(null, "최대 투입 금액은 7000원입니다.", "오류", JOptionPane.ERROR_MESSAGE);
                         }
@@ -219,7 +243,6 @@ public class VendingMachineGUI extends JFrame {
         JPanel p5 = new JPanel();
         p5.setBackground(Color.gray); // p5 배경색 설정
         p5.setLayout(new FlowLayout(FlowLayout.LEFT));
-        currentAmount = 0;
         currentAmountLabel = new JLabel("현재 금액: " + currentAmount + "원");
         JButton returnButton = new JButton("반환");
         returnButton.setPreferredSize(new Dimension(80, 30));
@@ -230,6 +253,7 @@ public class VendingMachineGUI extends JFrame {
                     if (returnMoney(currentAmount)) {
                         currentAmount = 0;
                         currentAmountLabel.setText("현재 금액: " + currentAmount + "원");
+                        MongoDBManager.getInstance().updateCurrentAmount(vmNumber, currentAmount);
                         updateButtonColors(); // 금액 반환 후 버튼 색상 업데이트
                     } else {
                         JOptionPane.showMessageDialog(null, "충분한 거스름돈이 없습니다.", "오류", JOptionPane.ERROR_MESSAGE);
@@ -291,6 +315,8 @@ public class VendingMachineGUI extends JFrame {
             if (drink.getStock() > 0) {
                 currentAmount -= drink.getPrice();
                 currentAmountLabel.setText("현재 금액: " + currentAmount + "원");
+                MongoDBManager.getInstance().updateCurrentAmount(vmNumber, currentAmount);
+
                 JOptionPane.showMessageDialog(null, "음료를 가져가주세요.", "구매 완료", JOptionPane.INFORMATION_MESSAGE);
 
                 // 매출 기록
@@ -302,6 +328,8 @@ public class VendingMachineGUI extends JFrame {
                     drinkButtons[index].setText("품절");
                     drinkButtons[index].setEnabled(false);
                 }
+                MongoDBManager dbManager = MongoDBManager.getInstance();
+                dbManager.upsertInventory(vmNumber, drink.getName(), drink.getPrice(), drink.getStock(), LocalDate.now());
 
                 // 구매 기록 스택에 추가
                 drink.addPurchase(drink.getName());
@@ -353,8 +381,14 @@ public class VendingMachineGUI extends JFrame {
         int month = now.getMonthValue();
         int day = now.getDayOfMonth();
 
+        // 로컬에 기록
         drink.addSale(year, month, day);
+
+        // DB에 기록
+        MongoDBManager dbManager = MongoDBManager.getInstance();
+        dbManager.insertSale(vmNumber, drink.getName(), drink.getPrice(), now.toString());
     }
+
 
     public void updateButtonColors() {
         for (int i = 0; i < drinkButtons.length; i++) {
@@ -376,54 +410,90 @@ public class VendingMachineGUI extends JFrame {
     }
 
     private boolean returnMoney(int amount) {
-        int remainingAmount = amount;
+        MongoDBManager dbManager = MongoDBManager.getInstance();
+        int vmNumber = getVmNumber();
 
-        int[] denominations = {5000, 1000, 500, 100, 50, 10};
-        for (int denomination : denominations) {
-            int count = remainingAmount / denomination;
-            switch (denomination) {
-                case 5000:
-                    if (money.get5000WonCount() < count) {
-                        count = money.get5000WonCount();
-                    }
-                    money.use5000Won(count);
-                    break;
-                case 1000:
-                    if (money.get1000WonCount() < count) {
-                        count = money.get1000WonCount();
-                    }
-                    money.use1000Won(count);
-                    break;
-                case 500:
-                    if (money.get500WonCount() < count) {
-                        count = money.get500WonCount();
-                    }
-                    money.use500Won(count);
-                    break;
-                case 100:
-                    if (money.get100WonCount() < count) {
-                        count = money.get100WonCount();
-                    }
-                    money.use100Won(count);
-                    break;
-                case 50:
-                    if (money.get50WonCount() < count) {
-                        count = money.get50WonCount();
-                    }
-                    money.use50Won(count);
-                    break;
-                case 10:
-                    if (money.get10WonCount() < count) {
-                        count = money.get10WonCount();
-                    }
-                    money.use10Won(count);
-                    break;
-            }
-            remainingAmount -= count * denomination;
+        Document changeDoc = dbManager.getChangeState(vmNumber);
+        if (changeDoc == null) {
+            JOptionPane.showMessageDialog(null, "거스름돈 정보가 없습니다.", "오류", JOptionPane.ERROR_MESSAGE);
+            return false;
         }
 
-        return remainingAmount == 0;
+        Map<String, Integer> changeMap = new HashMap<>();
+        for (String key : changeDoc.keySet()) {
+            if (key.equals("_id") || key.equals("vmNumber")) continue;
+            Object value = changeDoc.get(key);
+            if (value instanceof Integer) {
+                changeMap.put(key, (Integer) value);
+            }
+        }
+
+        int[] denominations = {5000, 1000, 500, 100, 50, 10};
+        Map<String, Integer> usedChange = new HashMap<>();
+
+        int remaining = amount;
+
+        for (int denom : denominations) {
+            String key = String.valueOf(denom);
+            int available = changeMap.getOrDefault(key, 0);
+            int count = Math.min(remaining / denom, available);
+
+            if (count > 0) {
+                usedChange.put(key, count);
+                remaining -= count * denom;
+            }
+        }
+
+        if (remaining > 0) {
+            JOptionPane.showMessageDialog(null, "충분한 거스름돈이 없습니다.", "오류", JOptionPane.ERROR_MESSAGE);
+            return false;
+        }
+
+        for (Map.Entry<String, Integer> entry : usedChange.entrySet()) {
+            String denom = entry.getKey();
+            int prevCount = changeMap.getOrDefault(denom, 0);
+            changeMap.put(denom, prevCount - entry.getValue());
+        }
+
+        Document updateDoc = new Document();
+        for (Map.Entry<String, Integer> entry : changeMap.entrySet()) {
+            updateDoc.append(entry.getKey(), entry.getValue());
+        }
+        dbManager.updateChangeState(vmNumber, updateDoc);
+
+        return true;
     }
+
+
+
+
+    public void reloadDrinksFromDB() {
+        MongoDBManager dbManager = MongoDBManager.getInstance();
+        java.util.List<org.bson.Document> drinkDocs = dbManager.getDrinksByVMNumber(vmNumber);
+
+        if (drinkDocs == null || drinkDocs.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "음료 정보를 불러오지 못했습니다.", "오류", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        drinks = new Drink[drinkDocs.size()];
+        for (int i = 0; i < drinkDocs.size(); i++) {
+            org.bson.Document doc = drinkDocs.get(i);
+            String name = doc.getString("name");
+            int price = doc.getInteger("defaultPrice");
+
+            // ⭐ inventory에서 실제 재고 불러오기
+            Document inventoryDoc = dbManager.getInventory(vmNumber, name);
+            int stock = (inventoryDoc != null) ? inventoryDoc.getInteger("stock", 10) : 10;
+
+            Drink drink = new Drink(name, price);
+            drink.setStock(stock);
+            drinks[i] = drink;
+        }
+    }
+
+
+
 
 
 }
