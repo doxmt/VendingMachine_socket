@@ -5,6 +5,7 @@ import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import org.bson.Document;
 import com.mongodb.client.model.UpdateOptions;
+import util.EncryptionUtil;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -226,6 +227,45 @@ public class MongoDBManager {
                 new UpdateOptions().upsert(true)
         );
     }
+
+    // 초기 관리자 비밀번호 설정
+    public void initializeAdminPasswordIfAbsent(int vmNumber) {
+        MongoCollection<Document> collection = database.getCollection("admin_passwords");
+        Document existing = collection.find(new Document("vmNumber", vmNumber)).first();
+
+        if (existing == null) {
+            try {
+                String encrypted = EncryptionUtil.encrypt("1234");
+                Document doc = new Document("vmNumber", vmNumber)
+                        .append("password", encrypted);
+                collection.insertOne(doc);
+                System.out.println("초기 관리자 비밀번호 저장 완료 (암호화된 상태)");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // 관리자 비밀번호 업데이트
+    public void updateAdminPassword(int vmNumber, String encryptedPw) {
+        database.getCollection("admin_passwords").updateOne(
+                new Document("vmNumber", vmNumber),
+                new Document("$set", new Document("password", encryptedPw)),
+                new UpdateOptions().upsert(true)
+        );
+    }
+
+    // 관리자 비밀번호 조회
+    public String getAdminPassword(int vmNumber) {
+        Document doc = database.getCollection("admin_passwords")
+                .find(new Document("vmNumber", vmNumber))
+                .first();
+        if (doc != null && doc.getString("password") != null) {
+            return doc.getString("password");
+        }
+        return null;
+    }
+
 
 
 

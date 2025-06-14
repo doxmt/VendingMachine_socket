@@ -13,14 +13,17 @@ import java.util.regex.Pattern;
 import java.util.List;
 import db.MongoDBManager;
 import org.bson.Document;
+import util.EncryptionUtil;
 
 
 public class AdminGUI extends JFrame {
     private VendingMachineGUI vendingMachineGUI;
 
 
+
     public AdminGUI(VendingMachineGUI vendingMachineGUI) {
         this.vendingMachineGUI = vendingMachineGUI;
+
         setTitle("관리자 메뉴");
         setSize(400, 400);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -55,7 +58,8 @@ public class AdminGUI extends JFrame {
 
         changePasswordButton.addActionListener(new ActionListener() {
             @Override
-            public void actionPerformed(ActionEvent e) {
+            public void actionPerformed(ActionEvent e)
+            {
                 changePassword();
             }
         });
@@ -180,16 +184,32 @@ public class AdminGUI extends JFrame {
             String oldPassword = new String(oldPasswordField.getPassword());
             String newPassword = new String(newPasswordField.getPassword());
 
-            if (!oldPassword.equals(VendingMachineGUI.adminPassword)) {
-                JOptionPane.showMessageDialog(this, "기존 비밀번호가 틀렸습니다.", "오류", JOptionPane.ERROR_MESSAGE);
-            } else if (!isValidPassword(newPassword)) {
-                JOptionPane.showMessageDialog(this, "새 비밀번호는 특수문자 및 숫자가 하나 이상 포함된 8자리 이상이어야 합니다.", "오류", JOptionPane.ERROR_MESSAGE);
-            } else {
-                VendingMachineGUI.adminPassword = newPassword;
+            try {
+                // 현재 암호화된 비밀번호 복호화하여 확인
+                String encryptedStoredPassword = MongoDBManager.getInstance().getAdminPassword(vendingMachineGUI.getVmNumber());
+                String decryptedPassword = EncryptionUtil.decrypt(encryptedStoredPassword);
+                if (!oldPassword.equals(decryptedPassword)) {
+                    JOptionPane.showMessageDialog(this, "기존 비밀번호가 틀렸습니다.", "오류", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                if (!isValidPassword(newPassword)) {
+                    JOptionPane.showMessageDialog(this, "새 비밀번호는 특수문자 및 숫자가 하나 이상 포함된 8자리 이상이어야 합니다.", "오류", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+
+                // 암호화 후 DB 저장 및 메모리 반영
+                String encryptedNewPw = EncryptionUtil.encrypt(newPassword);
+                MongoDBManager.getInstance().updateAdminPassword(vendingMachineGUI.getVmNumber(), encryptedNewPw);
+                VendingMachineGUI.encryptedAdminPassword = encryptedNewPw;
                 JOptionPane.showMessageDialog(this, "비밀번호가 성공적으로 변경되었습니다.", "성공", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(this, "암호화 또는 복호화 중 오류가 발생했습니다.", "오류", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
+
 
     private boolean isValidPassword(String password) {
         if (password.length() < 8) {

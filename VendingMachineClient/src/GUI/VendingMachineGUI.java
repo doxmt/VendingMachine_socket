@@ -13,11 +13,17 @@ import java.awt.event.ActionListener;
 import java.time.LocalDate;
 import java.util.Map;
 import db.MongoDBManager;
+import util.EncryptionUtil;
+
 import java.util.HashMap;
 import java.util.Map;
 
 public class VendingMachineGUI extends JFrame {
     private int vmNumber; // 자판기 번호 저장
+    public static String adminPassword = "1234"; // 초기 관리자 비밀번호
+    public static String encryptedAdminPassword = "";
+
+
     public int getVmNumber() {
         return this.vmNumber;
     }
@@ -25,7 +31,6 @@ public class VendingMachineGUI extends JFrame {
 
     private JLabel currentAmountLabel;
     private int currentAmount;
-    public static String adminPassword = "1234"; // 비밀번호를 변경 가능하도록 수정
     private static final int MAX_AMOUNT = 7000; // 최대 금액 설정
 
     JButton[] drinkButtons;
@@ -38,7 +43,24 @@ public class VendingMachineGUI extends JFrame {
     public VendingMachineGUI(int vmNumber) {
         this.vmNumber = vmNumber;
 
+
         MongoDBManager dbManager = MongoDBManager.getInstance();
+        dbManager.initializeAdminPasswordIfAbsent(vmNumber);
+
+        try {
+            String encryptedPw = dbManager.getAdminPassword(vmNumber); // MongoDB에서 가져오기
+
+            if (encryptedPw != null) {
+                VendingMachineGUI.adminPassword = EncryptionUtil.decrypt(encryptedPw);
+            } else {
+                System.out.println("❗ 관리자 비밀번호가 DB에 없습니다.");
+                VendingMachineGUI.adminPassword = "1234"; // fallback 기본값
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+
         reloadDrinksFromDB();
         if (!dbManager.hasChangeData(vmNumber)) {
             Map<String, Integer> initialChange = new HashMap<>();
