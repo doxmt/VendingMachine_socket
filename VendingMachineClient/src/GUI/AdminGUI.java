@@ -151,10 +151,13 @@ public class AdminGUI extends JFrame {
         changeDoc.append("1000", 10);
         changeDoc.append("5000", 10);
 
-        // DB에 저장
-        dbManager.updateChangeState(vmNumber, changeDoc);
+        // 🔁 DB에 저장 (암호화된 updateChangeStorage 이용)
+        dbManager.updateChangeStorage(vmNumber, Map.of(
+                "10", 10, "50", 10, "100", 10,
+                "500", 10, "1000", 10, "5000", 10
+        ));
 
-        // 관리자 작업 기록
+        // 📄 관리자 작업 로그 기록
         Document detail = new Document("10", 10)
                 .append("50", 10)
                 .append("100", 10)
@@ -163,8 +166,13 @@ public class AdminGUI extends JFrame {
                 .append("5000", 10);
         dbManager.insertAdminOperation(vmNumber, "거스름돈 보충", "change", detail);
 
+        // 📊 sales 기록 (✅ 암호화된 insertSale 사용)
+        dbManager.insertSale(vmNumber, "거스름돈 보충", 0, LocalDate.now().toString());
+
+        // ✔️ 안내 메시지
         JOptionPane.showMessageDialog(this, "각 화폐 단위를 10개로 보충했습니다.", "보충 완료", JOptionPane.INFORMATION_MESSAGE);
     }
+
 
 
     private void changePassword() {

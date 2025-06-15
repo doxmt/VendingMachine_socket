@@ -9,13 +9,10 @@ import util.EncryptionUtil;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.ArrayList;
+import java.util.*;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.Map;
-import java.util.Properties;
 import java.util.logging.Logger;
 
 
@@ -56,14 +53,46 @@ public class MongoDBManager {
     }
 
     public void insertSale(int vmNumber, String drinkName, int price, String date) {
-        MongoCollection<Document> sales = getSalesCollection();
-        Document doc = new Document("vmNumber", vmNumber)
-                .append("drinkName", drinkName)
-                .append("price", price)
-                .append("quantity", 1)
-                .append("date", date);
-        sales.insertOne(doc);
+        try {
+            MongoCollection<Document> sales = getSalesCollection();
+
+            Document saleDoc = new Document("vmNumber", EncryptionUtil.encrypt(String.valueOf(vmNumber)))
+                    .append("drinkName", EncryptionUtil.encrypt(drinkName))
+                    .append("price", EncryptionUtil.encrypt(String.valueOf(price)))
+                    .append("date", EncryptionUtil.encrypt(date));
+
+            sales.insertOne(saleDoc);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
+
+
+
+    public List<Document> getSalesByVM(int vmNumber) {
+        List<Document> result = new ArrayList<>();
+        MongoCollection<Document> collection = getSalesCollection();
+
+        for (Document doc : collection.find(new Document("vmNumber", vmNumber))) {
+            try {
+                String name = EncryptionUtil.decrypt(doc.getString("drinkName"));
+                int price = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("price")));
+                int qty = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("quantity")));
+                String date = EncryptionUtil.decrypt(doc.getString("date"));
+
+                result.add(new Document()
+                        .append("vmNumber", vmNumber)
+                        .append("drinkName", name)
+                        .append("price", price)
+                        .append("quantity", qty)
+                        .append("date", date));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        return result;
+    }
+
 
     // ----------------- inventory -----------------
     public MongoCollection<Document> getInventoryCollection() {
@@ -71,18 +100,48 @@ public class MongoDBManager {
     }
 
     public void upsertInventory(int vmNumber, String drinkName, int price, int stock, LocalDate date) {
-        Document filter = new Document("vmNumber", vmNumber).append("drinkName", drinkName);
-        Document update = new Document("$set", new Document("price", price)
-                .append("stock", stock)
-                .append("lastUpdated", date.toString()));
-        getInventoryCollection().updateOne(filter, update, new UpdateOptions().upsert(true));
+        try {
+            String encPrice = EncryptionUtil.encrypt(String.valueOf(price));
+            String encStock = EncryptionUtil.encrypt(String.valueOf(stock));
+            String encDate = EncryptionUtil.encrypt(date.toString());
+
+            Document filter = new Document("vmNumber", vmNumber)
+                    .append("drinkName", drinkName);
+
+            Document update = new Document("$set", new Document("price", encPrice)
+                    .append("stock", encStock)
+                    .append("lastUpdated", encDate));
+
+            getInventoryCollection().updateOne(filter, update, new UpdateOptions().upsert(true));
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
+
     public Document getInventory(int vmNumber, String drinkName) {
-        return getInventoryCollection()
-                .find(new Document("vmNumber", vmNumber).append("drinkName", drinkName))
-                .first();
+        try {
+            Document doc = getInventoryCollection()
+                    .find(new Document("vmNumber", vmNumber)
+                            .append("drinkName", drinkName))
+                    .first();
+
+            if (doc == null) return null;
+
+            int price = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("price")));
+            int stock = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("stock")));
+            String lastUpdated = EncryptionUtil.decrypt(doc.getString("lastUpdated"));
+
+            return new Document("drinkName", drinkName)
+                    .append("price", price)
+                    .append("stock", stock)
+                    .append("lastUpdated", lastUpdated);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
+
 
     // ----------------- drinks -----------------
     public MongoCollection<Document> getDrinksCollection() {
@@ -90,13 +149,23 @@ public class MongoDBManager {
     }
 
     public void insertDrink(int vmNumber, int drinkId, String name, int defaultPrice) {
-        Document doc = new Document("vmNumber", vmNumber)
-                .append("drinkId", drinkId)
-                .append("name", name)
-                .append("defaultPrice", defaultPrice)
-                .append("stock", 10);
-        getDrinksCollection().insertOne(doc);
+        try {
+            String encryptedName = EncryptionUtil.encrypt(name);
+            String encryptedPrice = EncryptionUtil.encrypt(String.valueOf(defaultPrice));
+            String encryptedStock = EncryptionUtil.encrypt("10"); // 초기 재고
+
+            Document doc = new Document("vmNumber", vmNumber)
+                    .append("drinkId", drinkId)
+                    .append("name", encryptedName)
+                    .append("defaultPrice", encryptedPrice)
+                    .append("stock", encryptedStock);
+
+            getDrinksCollection().insertOne(doc);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
+
 
     public List<Document> getAllDrinks(int vmNumber) {
         List<Document> drinks = new ArrayList<>();
@@ -119,20 +188,98 @@ public class MongoDBManager {
 
     // ----------------- operations -----------------
     public void insertAdminOperation(int vmNumber, String operation, String target, Document detail) {
-        MongoCollection<Document> collection = database.getCollection("operations");
-        Document doc = new Document("vmNumber", vmNumber)
-                .append("operation", operation)
-                .append("target", target)
-                .append("detail", detail)
-                .append("timestamp", LocalDateTime.now().toString());
-        collection.insertOne(doc);
+        try {
+            MongoCollection<Document> collection = database.getCollection("operations");
+
+            String encOperation = EncryptionUtil.encrypt(operation);
+            String encTarget = EncryptionUtil.encrypt(target);
+            String encTimestamp = EncryptionUtil.encrypt(LocalDateTime.now().toString());
+
+            Document encryptedDetail = new Document();
+            for (String key : detail.keySet()) {
+                Object value = detail.get(key);
+                if (value != null) {
+                    encryptedDetail.append(key, EncryptionUtil.encrypt(value.toString()));
+                }
+            }
+
+
+            Document doc = new Document("vmNumber", vmNumber)
+                    .append("operation", encOperation)
+                    .append("target", encTarget)
+                    .append("detail", encryptedDetail)
+                    .append("timestamp", encTimestamp);
+
+            collection.insertOne(doc);
+        } catch (Exception e) {
+            e.printStackTrace(); // 또는 로깅
+        }
     }
 
-    public List<Document> getDrinksByVMNumber(int vmNumber) {
-        return getDrinksCollection()
-                .find(new Document("vmNumber", vmNumber))
-                .into(new ArrayList<>());
+    public MongoCollection<Document> getOperationsCollection() {
+        return database.getCollection("operations");
     }
+
+
+    public List<Document> getOperationsByVM(int vmNumber) {
+        List<Document> result = new ArrayList<>();
+        MongoCollection<Document> collection = getOperationsCollection();
+
+        for (Document doc : collection.find(new Document("vmNumber", vmNumber))) {
+            try {
+                String operation = EncryptionUtil.decrypt(doc.getString("operation"));
+                String target = EncryptionUtil.decrypt(doc.getString("target"));
+                String timestamp = EncryptionUtil.decrypt(doc.getString("timestamp"));
+
+                Document decryptedDetail = new Document();
+                Document encDetail = (Document) doc.get("detail");
+                for (String key : encDetail.keySet()) {
+                    Object value = encDetail.get(key);
+                    if (value instanceof String) {
+                        decryptedDetail.append(key, EncryptionUtil.decrypt((String) value));
+                    } else {
+                        decryptedDetail.append(key, value);
+                    }
+                }
+
+                result.add(new Document()
+                        .append("vmNumber", vmNumber)
+                        .append("operation", operation)
+                        .append("target", target)
+                        .append("detail", decryptedDetail)
+                        .append("timestamp", timestamp));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return result;
+    }
+
+
+
+    public List<Document> getDrinksByVMNumber(int vmNumber) {
+        List<Document> decryptedDrinks = new ArrayList<>();
+        FindIterable<Document> docs = getDrinksCollection().find(new Document("vmNumber", vmNumber));
+
+        for (Document doc : docs) {
+            try {
+                String name = EncryptionUtil.decrypt(doc.getString("name"));
+                int price = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("defaultPrice")));
+                int stock = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("stock")));
+
+                Document decrypted = new Document("name", name)
+                        .append("defaultPrice", price)
+                        .append("stock", stock);
+                decryptedDrinks.add(decrypted);
+            } catch (Exception e) {
+                e.printStackTrace(); // 복호화 실패 시 로깅
+            }
+        }
+
+        return decryptedDrinks;
+    }
+
 
     public void updateDrinkNameEverywhere(int vmNumber, String oldName, String newName) {
         Document filter = new Document("vmNumber", vmNumber).append("drinkName", oldName);
@@ -145,53 +292,126 @@ public class MongoDBManager {
         getInventoryCollection().updateMany(filter, update);
     }
     public void updateCurrentAmount(int vmNumber, int amount) {
-        getInventoryCollection().updateOne(
-                new Document("vmNumber", vmNumber).append("type", "amount"),
-                new Document("$set", new Document("currentAmount", amount)),
-                new UpdateOptions().upsert(true)
-        );
+        try {
+            String encryptedAmount = EncryptionUtil.encrypt(String.valueOf(amount));
+            getMachineStateCollection().updateOne(
+                    new Document("vmNumber", vmNumber),
+                    new Document("$set", new Document("currentAmount", encryptedAmount)),
+                    new UpdateOptions().upsert(true)
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
-
     public int getCurrentAmount(int vmNumber) {
-        Document doc = getInventoryCollection()
-                .find(new Document("vmNumber", vmNumber).append("type", "amount"))
-                .first();
-        return doc != null ? doc.getInteger("currentAmount", 0) : 0;
+        try {
+            Document doc = getMachineStateCollection()
+                    .find(new Document("vmNumber", vmNumber))
+                    .first();
+            if (doc != null && doc.containsKey("currentAmount")) {
+                return Integer.parseInt(EncryptionUtil.decrypt(doc.getString("currentAmount")));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return 0;
     }
 
-    public void addToStoredAmount(int vmNumber, int amount) {
-        Document query = new Document("vmNumber", vmNumber);
-        Document update = new Document("$inc", new Document("storedAmount", amount));
-        getMachineStateCollection().updateOne(query, update, new UpdateOptions().upsert(true));
+    public void addToStoredAmount(int vmNumber, int amountToAdd) {
+        try {
+            Document doc = getMachineStateCollection().find(new Document("vmNumber", vmNumber)).first();
+            int currentStored = 0;
+
+            if (doc != null && doc.containsKey("storedAmount")) {
+                currentStored = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("storedAmount")));
+            }
+
+            int updated = currentStored + amountToAdd;
+            getMachineStateCollection().updateOne(
+                    new Document("vmNumber", vmNumber),
+                    new Document("$set", new Document("storedAmount", EncryptionUtil.encrypt(String.valueOf(updated)))),
+                    new UpdateOptions().upsert(true)
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public int collectStoredAmount(int vmNumber) {
-        Document state = getMachineStateCollection().findOneAndUpdate(
-                new Document("vmNumber", vmNumber),
-                new Document("$set", new Document("storedAmount", 0))
-        );
-        return state != null ? state.getInteger("storedAmount", 0) : 0;
+        try {
+            Document doc = getMachineStateCollection().find(new Document("vmNumber", vmNumber)).first();
+
+            int storedAmount = 0;
+            if (doc != null && doc.containsKey("storedAmount")) {
+                storedAmount = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("storedAmount")));
+            }
+
+            getMachineStateCollection().updateOne(
+                    new Document("vmNumber", vmNumber),
+                    new Document("$set", new Document("storedAmount", EncryptionUtil.encrypt("0")))
+            );
+
+            return storedAmount;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return 0;
+        }
     }
 
     public void incrementStoredMoney(int vmNumber, int denomination, int count) {
-        Document query = new Document("vmNumber", vmNumber);
-        Document update = new Document("$inc", new Document("storedMoney." + denomination, count));
-        getMachineStateCollection().updateOne(query, update, new UpdateOptions().upsert(true));
+        try {
+            Document doc = getMachineStateCollection().find(new Document("vmNumber", vmNumber)).first();
+            Document storedMoney = new Document();
+
+            if (doc != null && doc.containsKey("storedMoney")) {
+                Document existing = (Document) doc.get("storedMoney");
+                for (String key : existing.keySet()) {
+                    String val = EncryptionUtil.decrypt(existing.getString(key));
+                    storedMoney.append(key, val);
+                }
+            }
+
+            int prevCount = Integer.parseInt(storedMoney.getOrDefault(String.valueOf(denomination), "0").toString());
+            int newCount = prevCount + count;
+
+            storedMoney.put(String.valueOf(denomination), EncryptionUtil.encrypt(String.valueOf(newCount)));
+
+            getMachineStateCollection().updateOne(
+                    new Document("vmNumber", vmNumber),
+                    new Document("$set", new Document("storedMoney", storedMoney)),
+                    new UpdateOptions().upsert(true)
+            );
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     public Document getStoredMoney(int vmNumber) {
-        Document doc = getMachineStateCollection()
-                .find(new Document("vmNumber", vmNumber))
-                .projection(Projections.include("storedMoney"))
-                .first();
-        return (doc != null) ? (Document) doc.get("storedMoney") : new Document();
+        Document result = new Document();
+        try {
+            Document doc = getMachineStateCollection()
+                    .find(new Document("vmNumber", vmNumber))
+                    .first();
+            if (doc != null && doc.containsKey("storedMoney")) {
+                Document encMap = (Document) doc.get("storedMoney");
+                for (String denom : encMap.keySet()) {
+                    String decrypted = EncryptionUtil.decrypt(encMap.getString(denom));
+                    result.append(denom, Integer.parseInt(decrypted));
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return result;
     }
 
     public void resetStoredMoney(int vmNumber) {
-        Document query = new Document("vmNumber", vmNumber);
-        Document update = new Document("$set", new Document("storedMoney", new Document()));
-        getMachineStateCollection().updateOne(query, update);
+        getMachineStateCollection().updateOne(
+                new Document("vmNumber", vmNumber),
+                new Document("$set", new Document("storedMoney", new Document()))
+        );
     }
+
 
     // Change 정보 조회
     public Document getChangeState(int vmNumber) {
@@ -220,13 +440,55 @@ public class MongoDBManager {
         return doc != null;
     }
 
-    public void updateChangeStorage(int vmNumber, Document changeDoc) {
-        database.getCollection("changeStorage").updateOne(
-                Filters.eq("vmNumber", vmNumber),
-                new Document("$set", changeDoc.append("vmNumber", vmNumber)),
-                new UpdateOptions().upsert(true)
-        );
+    public MongoCollection<Document> getChangeStorageCollection() {
+        return database.getCollection("changeStorage");
     }
+
+
+    public void updateChangeStorage(int vmNumber, Map<String, Integer> changeMap) {
+        try {
+            Document encryptedDoc = new Document();
+
+            for (Map.Entry<String, Integer> entry : changeMap.entrySet()) {
+                String key = entry.getKey();
+                String encryptedValue = EncryptionUtil.encrypt(String.valueOf(entry.getValue()));
+                encryptedDoc.append(key, encryptedValue);
+            }
+
+            // vmNumber 포함시켜서 저장할 경우, $set 내부로 넣기
+            encryptedDoc.append("vmNumber", vmNumber);
+
+            getChangeStorageCollection().updateOne(
+                    new Document("vmNumber", vmNumber),
+                    new Document("$set", encryptedDoc),
+                    new UpdateOptions().upsert(true)
+            );
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public Map<Integer, Integer> getChangeStorage(int vmNumber) {
+        Map<Integer, Integer> changeMap = new HashMap<>();
+        Document doc = getChangeStorageCollection().find(new Document("vmNumber", vmNumber)).first();
+
+        if (doc != null) {
+            for (String key : doc.keySet()) {
+                if (key.equals("_id") || key.equals("vmNumber")) continue;
+                try {
+                    String decrypted = EncryptionUtil.decrypt(doc.getString(key));
+                    changeMap.put(Integer.parseInt(key), Integer.parseInt(decrypted));
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        return changeMap;
+    }
+
+
 
     // 초기 관리자 비밀번호 설정
     public void initializeAdminPasswordIfAbsent(int vmNumber) {
@@ -265,8 +527,6 @@ public class MongoDBManager {
         }
         return null;
     }
-
-
 
 
 

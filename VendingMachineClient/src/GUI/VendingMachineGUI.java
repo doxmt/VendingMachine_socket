@@ -14,6 +14,8 @@ import java.time.LocalDate;
 import java.util.Map;
 import db.MongoDBManager;
 import util.EncryptionUtil;
+import java.util.List;
+
 
 import java.util.HashMap;
 import java.util.Map;
@@ -71,7 +73,7 @@ public class VendingMachineGUI extends JFrame {
             initialChange.put("50", 10);
             initialChange.put("10", 10);
 
-            dbManager.updateChangeStorage(vmNumber, new Document(initialChange));
+            dbManager.updateChangeStorage(vmNumber, initialChange);
         }
         setTitle("음료 자판기 " + vmNumber);
         setSize(700, 800);
@@ -445,14 +447,22 @@ public class VendingMachineGUI extends JFrame {
         for (String key : changeDoc.keySet()) {
             if (key.equals("_id") || key.equals("vmNumber")) continue;
             Object value = changeDoc.get(key);
-            if (value instanceof Integer) {
-                changeMap.put(key, (Integer) value);
+            try {
+                if (value instanceof String) {
+                    // 복호화 후 Integer 변환
+                    int decrypted = Integer.parseInt(EncryptionUtil.decrypt((String) value));
+                    changeMap.put(key, decrypted);
+                } else if (value instanceof Integer) {
+                    // 혹시 평문이면 그냥 처리
+                    changeMap.put(key, (Integer) value);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
         }
 
         int[] denominations = {5000, 1000, 500, 100, 50, 10};
         Map<String, Integer> usedChange = new HashMap<>();
-
         int remaining = amount;
 
         for (int denom : denominations) {
@@ -477,10 +487,16 @@ public class VendingMachineGUI extends JFrame {
             changeMap.put(denom, prevCount - entry.getValue());
         }
 
+        // 🔄 업데이트 시에도 암호화 적용
         Document updateDoc = new Document();
         for (Map.Entry<String, Integer> entry : changeMap.entrySet()) {
-            updateDoc.append(entry.getKey(), entry.getValue());
+            try {
+                updateDoc.append(entry.getKey(), EncryptionUtil.encrypt(String.valueOf(entry.getValue())));
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
+
         dbManager.updateChangeState(vmNumber, updateDoc);
 
         return true;
@@ -489,9 +505,10 @@ public class VendingMachineGUI extends JFrame {
 
 
 
+
     public void reloadDrinksFromDB() {
         MongoDBManager dbManager = MongoDBManager.getInstance();
-        java.util.List<org.bson.Document> drinkDocs = dbManager.getDrinksByVMNumber(vmNumber);
+        List<Document> drinkDocs = dbManager.getDrinksByVMNumber(vmNumber);
 
         if (drinkDocs == null || drinkDocs.isEmpty()) {
             JOptionPane.showMessageDialog(this, "음료 정보를 불러오지 못했습니다.", "오류", JOptionPane.ERROR_MESSAGE);
@@ -500,19 +517,17 @@ public class VendingMachineGUI extends JFrame {
 
         drinks = new Drink[drinkDocs.size()];
         for (int i = 0; i < drinkDocs.size(); i++) {
-            org.bson.Document doc = drinkDocs.get(i);
+            Document doc = drinkDocs.get(i);
             String name = doc.getString("name");
             int price = doc.getInteger("defaultPrice");
-
-            // ⭐ inventory에서 실제 재고 불러오기
-            Document inventoryDoc = dbManager.getInventory(vmNumber, name);
-            int stock = (inventoryDoc != null) ? inventoryDoc.getInteger("stock", 10) : 10;
+            int stock = doc.getInteger("stock");
 
             Drink drink = new Drink(name, price);
             drink.setStock(stock);
             drinks[i] = drink;
         }
     }
+
 
 
 
