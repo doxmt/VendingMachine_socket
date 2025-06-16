@@ -10,6 +10,8 @@ import javax.swing.border.MatteBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.IOException;
+import java.net.Socket;
 import java.time.LocalDate;
 import java.util.Map;
 import db.MongoDBManager;
@@ -20,15 +22,22 @@ import java.util.List;
 import java.util.HashMap;
 import java.util.Map;
 
+import static client.ClientSender.sendDataToServer;
+
 public class VendingMachineGUI extends JFrame {
     private int vmNumber; // 자판기 번호 저장
     public static String adminPassword = "1234"; // 초기 관리자 비밀번호
     public static String encryptedAdminPassword = "";
 
+    private Socket socket;
+
+
 
     public int getVmNumber() {
         return this.vmNumber;
     }
+
+
 
 
     private JLabel currentAmountLabel;
@@ -44,6 +53,13 @@ public class VendingMachineGUI extends JFrame {
 
     public VendingMachineGUI(int vmNumber) {
         this.vmNumber = vmNumber;
+
+        try {
+            socket = new Socket("127.0.0.1", 9999);
+            System.out.println("[GUI] 서버에 연결되었습니다.");
+        } catch (IOException e) {
+            System.out.println("[GUI] 서버 연결 실패: " + e.getMessage());
+        }
 
 
         MongoDBManager dbManager = MongoDBManager.getInstance();
@@ -96,6 +112,16 @@ public class VendingMachineGUI extends JFrame {
 
         setVisible(true);
         updateButtonColors();
+
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                System.out.println("[클라이언트] 자판기 종료 감지됨");
+                client.ClientSender.sendDisconnectNotice(vmNumber); // 서버에게 알림
+            }
+        });
+
+
     }
 
     public Money getMoney() {
@@ -411,6 +437,17 @@ public class VendingMachineGUI extends JFrame {
         // DB에 기록
         MongoDBManager dbManager = MongoDBManager.getInstance();
         dbManager.insertSale(vmNumber, drink.getName(), drink.getPrice(), now.toString());
+
+        // 서버로 전송할 매출 정보 생성
+        Map<String, String> saleData = new HashMap<>();
+        saleData.put("type", "sale");
+        saleData.put("vmNumber", String.valueOf(vmNumber));
+        saleData.put("drinkName", drink.getName());
+        saleData.put("price", String.valueOf(drink.getPrice()));
+        saleData.put("date", now.toString());
+
+        // 서버로 전송
+        sendDataToServer(saleData);
     }
 
 
@@ -526,6 +563,25 @@ public class VendingMachineGUI extends JFrame {
             drink.setStock(stock);
             drinks[i] = drink;
         }
+        // 서버로 음료 목록 전송
+        for (Drink drink : drinks) {
+            Map<String, String> drinkData = new HashMap<>();
+            drinkData.put("type", "drink");
+            drinkData.put("vmNumber", String.valueOf(vmNumber));
+            drinkData.put("drinkName", drink.getName());
+            drinkData.put("price", String.valueOf(drink.getPrice()));
+            drinkData.put("stock", String.valueOf(drink.getStock()));
+
+            sendDataToServer(drinkData);
+        }
+
+    }
+
+    public static void sendDisconnectNotice(int vmNumber) {
+        Map<String, String> disconnectData = new HashMap<>();
+        disconnectData.put("type", "disconnect");
+        disconnectData.put("vmNumber", String.valueOf(vmNumber));
+        sendDataToServer(disconnectData);
     }
 
 

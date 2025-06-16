@@ -21,7 +21,7 @@ public class MongoDBManager {
     private static final String URI;
     private static final Logger logger = Logger.getLogger(MongoDBManager.class.getName());
 
-    static {
+        static {
         String uriTemp = "";
         try {
             Properties props = new Properties();
@@ -56,7 +56,7 @@ public class MongoDBManager {
         try {
             MongoCollection<Document> sales = getSalesCollection();
 
-            Document saleDoc = new Document("vmNumber", EncryptionUtil.encrypt(String.valueOf(vmNumber)))
+            Document saleDoc = new Document("vmNumber", vmNumber)  // 평문 저장
                     .append("drinkName", EncryptionUtil.encrypt(drinkName))
                     .append("price", EncryptionUtil.encrypt(String.valueOf(price)))
                     .append("date", EncryptionUtil.encrypt(date));
@@ -69,6 +69,7 @@ public class MongoDBManager {
 
 
 
+
     public List<Document> getSalesByVM(int vmNumber) {
         List<Document> result = new ArrayList<>();
         MongoCollection<Document> collection = getSalesCollection();
@@ -77,14 +78,12 @@ public class MongoDBManager {
             try {
                 String name = EncryptionUtil.decrypt(doc.getString("drinkName"));
                 int price = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("price")));
-                int qty = Integer.parseInt(EncryptionUtil.decrypt(doc.getString("quantity")));
                 String date = EncryptionUtil.decrypt(doc.getString("date"));
 
                 result.add(new Document()
                         .append("vmNumber", vmNumber)
                         .append("drinkName", name)
                         .append("price", price)
-                        .append("quantity", qty)
                         .append("date", date));
             } catch (Exception e) {
                 e.printStackTrace();
@@ -113,10 +112,23 @@ public class MongoDBManager {
                     .append("lastUpdated", encDate));
 
             getInventoryCollection().updateOne(filter, update, new UpdateOptions().upsert(true));
+
+            // ✅ 서버로 전송
+            Map<String, String> inventoryData = new HashMap<>();
+            inventoryData.put("type", "inventory");
+            inventoryData.put("vmNumber", String.valueOf(vmNumber)); // ⚠️ 서버에는 평문으로!
+            inventoryData.put("drinkName", drinkName);
+            inventoryData.put("price", String.valueOf(price));
+            inventoryData.put("stock", String.valueOf(stock));
+            inventoryData.put("date", date.toString());
+
+            client.ClientSender.sendDataToServer(inventoryData);
+
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
 
 
     public Document getInventory(int vmNumber, String drinkName) {
