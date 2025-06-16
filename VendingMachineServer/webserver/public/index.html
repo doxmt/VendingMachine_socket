@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>자판기 관리자 페이지</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- 자판기 목록 사이드바 -->
+<aside>
+    <h2>자판기 목록</h2>
+    <ul id="vending-machine-list">
+        <li><button data-vm="VM001">자판기 1호</button></li>
+        <li><button data-vm="VM002">자판기 2호</button></li>
+        <li><button data-vm="VM003">자판기 3호</button></li>
+        <li><button data-vm="VM004">자판기 4호</button></li>
+    </ul>
+</aside>
+
+<!-- 대시보드 메인 -->
+<main>
+    <h1 class="title">자판기 관리자 페이지</h1>
+
+    <!-- 매출 요약 -->
+    <section id="summary-sales">
+        <h2>매출 요약</h2>
+        <p>일일 총 매출: <strong id="daily-total">-</strong></p>
+        <p>월간 총 매출: <strong id="monthly-total">-</strong></p>
+        <p>누적 총 매출: <strong id="total-sales">-</strong></p>
+    </section>
+
+    <!-- 음료별 매출 -->
+    <section id="drink-sales">
+        <h2>음료별 매출 현황</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>음료명</th>
+                <th>일일 매출</th>
+                <th>월간 매출</th>
+                <th>누적 매출</th>
+            </tr>
+            </thead>
+            <tbody>
+            <!-- JS로 데이터 추가 예정 -->
+            </tbody>
+        </table>
+    </section>
+
+    <!-- 재고 현황 -->
+    <section id="stock-status">
+        <h2>재고 현황</h2>
+        <table>
+            <thead>
+            <tr>
+                <th>음료명</th>
+                <th>남은 재고</th>
+            </tr>
+            </thead>
+            <tbody>
+            <!-- JS로 데이터 추가 예정 -->
+            </tbody>
+        </table>
+    </section>
+
+    <!-- 재고 부족 알림 -->
+    <section id="low-stock-alerts">
+        <h2>재고 부족 알림</h2>
+        <ul>
+            <!-- 예: <li class="alert">⚠️ 콜라: 재고 2개</li> -->
+        </ul>
+    </section>
+
+    <!-- 음료 이름 변경 -->
+    <section id="rename-drink">
+        <h2>음료 이름 변경</h2>
+        <form>
+            <label for="drink-select">음료 선택:</label>
+            <select id="drink-select">
+                <option value="coke">콜라</option>
+                <option value="sprite">사이다</option>
+                <!-- JS로 목록 추가 가능 -->
+            </select>
+            <input type="text" id="new-drink-name" placeholder="새 이름 입력" required>
+            <button type="submit">변경</button>
+        </form>
+    </section>
+</main>
+
+<script src="script.js"></script>
+</body>
+</html>
