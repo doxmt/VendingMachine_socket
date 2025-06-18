@@ -39,7 +39,7 @@ public class ClientSender {
     }
 
 
-    public static void sendDisconnectNotice(int vmNumber) {
+    public static void sendDisconnectNotice(String vmNumber) {
         Map<String, String> disconnectData = new HashMap<>();
         disconnectData.put("type", "disconnect");
         disconnectData.put("vmNumber", String.valueOf(vmNumber));

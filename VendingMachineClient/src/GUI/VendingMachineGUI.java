@@ -13,19 +13,19 @@ import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.net.Socket;
 import java.time.LocalDate;
-import java.util.Map;
+import java.util.*;
+
 import db.MongoDBManager;
 import util.EncryptionUtil;
+
+
 import java.util.List;
-
-
-import java.util.HashMap;
 import java.util.Map;
 
 import static client.ClientSender.sendDataToServer;
 
 public class VendingMachineGUI extends JFrame {
-    private int vmNumber; // 자판기 번호 저장
+    private final String vmNumber; // 자판기 번호 저장
     public static String adminPassword = "1234"; // 초기 관리자 비밀번호
     public static String encryptedAdminPassword = "";
 
@@ -33,7 +33,7 @@ public class VendingMachineGUI extends JFrame {
 
 
 
-    public int getVmNumber() {
+    public String getVmNumber() {
         return this.vmNumber;
     }
 
@@ -51,7 +51,7 @@ public class VendingMachineGUI extends JFrame {
     private Money money;
     private boolean adminMode = false; // 관리자 모드 상태
 
-    public VendingMachineGUI(int vmNumber) {
+    public VendingMachineGUI(String vmNumber) {
         this.vmNumber = vmNumber;
 
         try {
@@ -472,7 +472,7 @@ public class VendingMachineGUI extends JFrame {
 
     private boolean returnMoney(int amount) {
         MongoDBManager dbManager = MongoDBManager.getInstance();
-        int vmNumber = getVmNumber();
+        String vmNumber = getVmNumber();
 
         Document changeDoc = dbManager.getChangeState(vmNumber);
         if (changeDoc == null) {
@@ -544,40 +544,65 @@ public class VendingMachineGUI extends JFrame {
 
 
     public void reloadDrinksFromDB() {
-        MongoDBManager dbManager = MongoDBManager.getInstance();
-        List<Document> drinkDocs = dbManager.getDrinksByVMNumber(vmNumber);
+        try {
+            MongoDBManager dbManager = MongoDBManager.getInstance();
+            List<Document> drinkDocs = dbManager.getDrinksByVMNumber(vmNumber);
 
-        if (drinkDocs == null || drinkDocs.isEmpty()) {
-            JOptionPane.showMessageDialog(this, "음료 정보를 불러오지 못했습니다.", "오류", JOptionPane.ERROR_MESSAGE);
-            return;
+            // 1. inventory 컬렉션에서 재고 상태 조회
+            List<Document> inventoryDocs = dbManager.getInventoryCollection()
+                    .find(new Document("vmNumber", EncryptionUtil.encrypt(vmNumber)))
+                    .into(new ArrayList<>());
+
+            Map<String, Integer> inventoryStockMap = new HashMap<>();
+            for (Document invDoc : inventoryDocs) {
+                try {
+                    String drinkName = EncryptionUtil.decrypt(invDoc.getString("drinkName"));
+                    int stock = Integer.parseInt(EncryptionUtil.decrypt(invDoc.getString("stock")));
+                    inventoryStockMap.put(drinkName, stock);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            // 2. drinks 컬렉션에서 음료 정보 가져와서 재고는 inventory 상태 반영
+            drinks = new Drink[drinkDocs.size()];
+            for (int i = 0; i < drinkDocs.size(); i++) {
+                Document doc = drinkDocs.get(i);
+                try {
+                    String name = doc.getString("name");
+                    int price = doc.getInteger("defaultPrice");
+                    // inventory에 재고 정보가 있으면 그걸로, 없으면 기본 10개로 세팅
+                    int stock = inventoryStockMap.getOrDefault(name, 10);
+
+                    Drink drink = new Drink(name, price);
+                    drink.setStock(stock);
+                    drinks[i] = drink;
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+
+            // 3. 필요하면 서버 전송도 진행
+            for (Drink d : drinks) {
+                Map<String, String> drinkData = new HashMap<>();
+                drinkData.put("type", "drink");
+                drinkData.put("vmNumber", vmNumber);
+                drinkData.put("drinkName", d.getName());
+                drinkData.put("price", String.valueOf(d.getPrice()));
+                drinkData.put("stock", String.valueOf(d.getStock()));
+                sendDataToServer(drinkData);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
-
-        drinks = new Drink[drinkDocs.size()];
-        for (int i = 0; i < drinkDocs.size(); i++) {
-            Document doc = drinkDocs.get(i);
-            String name = doc.getString("name");
-            int price = doc.getInteger("defaultPrice");
-            int stock = doc.getInteger("stock");
-
-            Drink drink = new Drink(name, price);
-            drink.setStock(stock);
-            drinks[i] = drink;
-        }
-        // 서버로 음료 목록 전송
-        for (Drink drink : drinks) {
-            Map<String, String> drinkData = new HashMap<>();
-            drinkData.put("type", "drink");
-            drinkData.put("vmNumber", String.valueOf(vmNumber));
-            drinkData.put("drinkName", drink.getName());
-            drinkData.put("price", String.valueOf(drink.getPrice()));
-            drinkData.put("stock", String.valueOf(drink.getStock()));
-
-            sendDataToServer(drinkData);
-        }
-
     }
 
-    public static void sendDisconnectNotice(int vmNumber) {
+
+
+
+
+
+    public static void sendDisconnectNotice(String vmNumber) {
         Map<String, String> disconnectData = new HashMap<>();
         disconnectData.put("type", "disconnect");
         disconnectData.put("vmNumber", String.valueOf(vmNumber));

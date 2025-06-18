@@ -140,7 +140,7 @@ public class AdminGUI extends JFrame {
     }
 
     private void refillChangeTo10Each() {
-        int vmNumber = vendingMachineGUI.getVmNumber();
+        String vmNumber = vendingMachineGUI.getVmNumber();
         MongoDBManager dbManager = MongoDBManager.getInstance();
 
         Document changeDoc = new Document();
@@ -362,7 +362,7 @@ public class AdminGUI extends JFrame {
 
                         // DB 반영
                         MongoDBManager dbManager = MongoDBManager.getInstance();
-                        int vmNumber = vendingMachineGUI.getVmNumber(); // 자판기 번호 가져오기
+                        String vmNumber = vendingMachineGUI.getVmNumber(); // 자판기 번호 가져오기
                         dbManager.upsertInventory(vmNumber, drink.getName(), drink.getPrice(), drink.getStock(), LocalDate.now());
 
                         // 관리자 작업 기록
@@ -395,7 +395,7 @@ public class AdminGUI extends JFrame {
     private void collectMoney() {
         new Thread(() -> {
             MongoDBManager dbManager = MongoDBManager.getInstance();
-            int vmNumber = vendingMachineGUI.getVmNumber();
+            String vmNumber = vendingMachineGUI.getVmNumber();
 
             // 💾 DB에서 보관된 돈 가져오기
             Document storedMoney = dbManager.getStoredMoney(vmNumber);
@@ -446,14 +446,16 @@ public class AdminGUI extends JFrame {
             drinkNames[i] = vendingMachineGUI.drinks[i].getName();
         }
 
-        String selectedDrink = (String) JOptionPane.showInputDialog(this, "정보를 변경할 음료를 선택하세요.", "음료 정보 변경", JOptionPane.QUESTION_MESSAGE, null, drinkNames, drinkNames[0]);
+        String selectedDrink = (String) JOptionPane.showInputDialog(
+                this, "정보를 변경할 음료를 선택하세요.", "음료 정보 변경",
+                JOptionPane.QUESTION_MESSAGE, null, drinkNames, drinkNames[0]);
+
         if (selectedDrink != null) {
             for (Drink drink : vendingMachineGUI.drinks) {
                 if (drink.getName().equals(selectedDrink)) {
                     String newName = JOptionPane.showInputDialog(this, "새 음료 이름을 입력하세요.", drink.getName());
                     String newPriceStr = JOptionPane.showInputDialog(this, "새 음료 가격을 입력하세요.", drink.getPrice());
 
-                    // 🚫 입력 취소 시 중단
                     if (newName == null || newPriceStr == null) return;
 
                     try {
@@ -462,7 +464,6 @@ public class AdminGUI extends JFrame {
                             throw new NumberFormatException("가격은 10원 단위여야 합니다.");
                         }
 
-                        // ✅ 이름 중복 검사
                         boolean duplicate = Arrays.stream(vendingMachineGUI.drinks)
                                 .anyMatch(d -> d.getName().equals(newName) && !d.getName().equals(selectedDrink));
                         if (duplicate) {
@@ -470,40 +471,53 @@ public class AdminGUI extends JFrame {
                             return;
                         }
 
-                        // 로컬 데이터 수정
+                        // 로컬 데이터 반영
                         drink.setName(newName);
                         drink.setPrice(newPrice);
 
                         MongoDBManager dbManager = MongoDBManager.getInstance();
-                        int vmNumber = vendingMachineGUI.getVmNumber();
+                        String vmNumber = vendingMachineGUI.getVmNumber();
+
+                        // 🔐 암호화된 필드값 생성
+                        String encVm = EncryptionUtil.encrypt(vmNumber.trim().toUpperCase());
+                        String encOldName = EncryptionUtil.encrypt(selectedDrink);
+                        String encNewName = EncryptionUtil.encrypt(newName);
+                        String encNewPrice = EncryptionUtil.encrypt(String.valueOf(newPrice));
 
                         // drinks 컬렉션 업데이트
                         dbManager.getDrinksCollection().updateOne(
-                                new org.bson.Document("vmNumber", vmNumber).append("name", selectedDrink),
-                                new org.bson.Document("$set", new org.bson.Document("name", newName).append("defaultPrice", newPrice))
+                                new Document("vmNumber", encVm).append("name", encOldName),
+                                new Document("$set", new Document("name", encNewName)
+                                        .append("defaultPrice", encNewPrice))
                         );
 
-                        // inventory 컬렉션도 업데이트
+                        // inventory 컬렉션 업데이트
                         dbManager.getInventoryCollection().updateMany(
-                                new org.bson.Document("vmNumber", vmNumber).append("drinkName", selectedDrink),
-                                new org.bson.Document("$set", new org.bson.Document("drinkName", newName).append("price", newPrice))
+                                new Document("vmNumber", encVm).append("drinkName", encOldName),
+                                new Document("$set", new Document("drinkName", encNewName)
+                                        .append("price", encNewPrice))
                         );
 
+                        // sales 컬렉션도 함께 변경
+                        dbManager.updateDrinkNameEverywhere(vmNumber, selectedDrink, newName);
+
+                        // UI 반영
                         vendingMachineGUI.reloadDrinksFromDB();
-
-                        // sales 컬렉션도 업데이트
-
+                        vendingMachineGUI.updateButtonColors();
 
                         JOptionPane.showMessageDialog(this, "음료 정보가 성공적으로 변경되었습니다.", "변경 완료", JOptionPane.INFORMATION_MESSAGE);
-                        vendingMachineGUI.updateButtonColors();
                     } catch (NumberFormatException ex) {
                         JOptionPane.showMessageDialog(this, "유효한 가격을 입력하세요. 가격은 10원 단위여야 합니다.", "입력 오류", JOptionPane.ERROR_MESSAGE);
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        JOptionPane.showMessageDialog(this, "DB 수정 중 오류가 발생했습니다.", "오류", JOptionPane.ERROR_MESSAGE);
                     }
                     break;
                 }
             }
         }
     }
+
 
 
 
@@ -546,4 +560,25 @@ public class AdminGUI extends JFrame {
             return totalSales;
         }
     }
+
+    public void changeDrinkName(String oldName, String newName) {
+        MongoDBManager dbManager = MongoDBManager.getInstance();
+
+        // vendingMachineGUI를 통해 vmNumber 가져오기
+        String vmNumber = vendingMachineGUI.getVmNumber();
+
+        // 1. 클라이언트 DB 변경
+        dbManager.updateDrinkNameEverywhere(vmNumber, oldName, newName);
+
+        // 2. 서버에 변경 요청 전송
+        Map<String, String> changeData = new HashMap<>();
+        changeData.put("type", "drinkRename");
+        changeData.put("vmNumber", vmNumber);
+        changeData.put("oldName", oldName);
+        changeData.put("newName", newName);
+
+        client.ClientSender.sendDataToServer(changeData);
+    }
+
+
 }
