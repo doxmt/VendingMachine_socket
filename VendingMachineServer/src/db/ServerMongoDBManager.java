@@ -116,15 +116,15 @@ public class ServerMongoDBManager {
             String encryptedStock = EncryptionUtil_Server.encrypt(data.get("stock"));
             String encryptedDate = EncryptionUtil_Server.encrypt(data.get("date"));
 
+            // ✅ 중복 방지를 위해 date는 filter에서 제거
             Document filter = new Document("vmNumber", encryptedVmNumber)
-                    .append("name", encryptedName)
-                    .append("date", encryptedDate);
+                    .append("name", encryptedName);
 
             Document update = new Document("$set", new Document("vmNumber", encryptedVmNumber)
                     .append("name", encryptedName)
                     .append("price", encryptedPrice)
                     .append("stock", encryptedStock)
-                    .append("date", encryptedDate));
+                    .append("date", encryptedDate));  // ✅ 저장은 함
 
             inventory.updateOne(filter, update, new UpdateOptions().upsert(true));
             System.out.println("[서버] 재고 데이터 저장 완료");
@@ -134,6 +134,7 @@ public class ServerMongoDBManager {
             e.printStackTrace();
         }
     }
+
     public void updateDrinkNameEverywhere(String vmNumber, String oldName, String newName) {
         try {
             String encVm = EncryptionUtil_Server.encrypt(vmNumber.trim().toUpperCase());
