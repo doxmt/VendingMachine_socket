@@ -445,9 +445,12 @@ public class VendingMachineGUI extends JFrame {
         // 로컬에 기록
         drink.addSale(year, month, day);
 
-        // DB에 기록
+        // DB에 판매 기록 저장
         MongoDBManager dbManager = MongoDBManager.getInstance();
         dbManager.insertSale(vmNumber, drink.getName(), drink.getPrice(), now.toString());
+
+        // 🔹 판매 금액을 보관 금액(machineState.storedAmount)에 누적
+        dbManager.addToStoredAmount(vmNumber, drink.getPrice());
 
         // 서버로 전송할 매출 정보 생성
         Map<String, String> saleData = new HashMap<>();
@@ -460,6 +463,7 @@ public class VendingMachineGUI extends JFrame {
         // 서버로 전송
         sendDataToServer(saleData);
     }
+
 
 
     public void updateButtonColors() {

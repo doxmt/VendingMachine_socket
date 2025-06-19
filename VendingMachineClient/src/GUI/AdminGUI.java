@@ -397,33 +397,38 @@ public class AdminGUI extends JFrame {
             MongoDBManager dbManager = MongoDBManager.getInstance();
             String vmNumber = vendingMachineGUI.getVmNumber();
 
-            // 💾 DB에서 보관된 돈 가져오기
-            Document storedMoney = dbManager.getStoredMoney(vmNumber);
-            if (storedMoney == null || storedMoney.isEmpty()) {
+            // 💰 실제 누적된 수익 금액 가져오기 (→ 자동 초기화)
+            int totalCollected = dbManager.collectStoredAmount(vmNumber);
+
+            if (totalCollected <= 0) {
                 SwingUtilities.invokeLater(() ->
                         JOptionPane.showMessageDialog(this, "보관된 금액이 없습니다.", "수금 실패", JOptionPane.WARNING_MESSAGE)
                 );
                 return;
             }
 
-            // 💸 수금 상세 내역 생성
-            int totalCollected = 0;
+            // 🔍 화폐 단위별 구성 정보 가져오기
+            Document storedMoney = dbManager.getStoredMoney(vmNumber);
             Document detail = new Document();
-            for (String denomStr : storedMoney.keySet()) {
-                try {
-                    int denom = Integer.parseInt(denomStr);
-                    int count = storedMoney.getInteger(denomStr, 0);
-                    totalCollected += denom * count;
-                    detail.append(denomStr + "원", count);
-                } catch (NumberFormatException ex) {
-                    // 무시
+
+            if (storedMoney != null && !storedMoney.isEmpty()) {
+                for (String denomStr : storedMoney.keySet()) {
+                    try {
+                        int count = storedMoney.getInteger(denomStr, 0);
+                        if (count > 0) {
+                            detail.append(denomStr + "원", count);
+                        }
+                    } catch (NumberFormatException ex) {
+                        // 무시 (예: _id)
+                    }
                 }
             }
+
             detail.append("총 수금", totalCollected);
 
-            // ✅ DB에 수금 로그 기록
+            // ✅ 수금 기록 + 저장된 지폐 기록 초기화
             dbManager.insertAdminOperation(vmNumber, "collect", "money", detail);
-            dbManager.resetStoredMoney(vmNumber); // 저장된 돈 초기화
+            dbManager.resetStoredMoney(vmNumber);
 
             // ✅ 팝업 메시지
             StringBuilder msg = new StringBuilder("수금 완료:\n");
@@ -436,6 +441,7 @@ public class AdminGUI extends JFrame {
             );
         }).start();
     }
+
 
 
 

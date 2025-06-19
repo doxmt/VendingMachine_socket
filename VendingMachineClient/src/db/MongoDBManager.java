@@ -7,6 +7,7 @@ import org.bson.Document;
 import com.mongodb.client.model.UpdateOptions;
 import util.EncryptionUtil;
 
+import java.io.FileWriter;
 import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -71,6 +72,8 @@ public class MongoDBManager {
 
 
             sales.insertOne(saleDoc);
+
+            saveSaleToFile(vmNumber, drinkName, price, date);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -675,6 +678,19 @@ public class MongoDBManager {
 
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private void saveSaleToFile(String vmNumber, String drinkName, int price, String date) {
+        try {
+            String filename = "sales_log_" + vmNumber + ".txt";
+            String line = String.format("[%s] %s 판매: %d원\n", date, drinkName, price);
+
+            FileWriter fw = new FileWriter(filename, true); // true → append 모드
+            fw.write(line);
+            fw.close();
+        } catch (IOException e) {
+            System.err.println("[파일 기록 실패] " + e.getMessage());
         }
     }
 
