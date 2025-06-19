@@ -213,13 +213,29 @@ public class MongoDBManager {
         long count = drinksCollection.countDocuments(new Document("vmNumber", encryptedVM));
         if (count > 0) return;
 
-        String[] names = {"물", "커피", "이온 음료", "고급 커피", "탄산 음료", "특화 음료"};
-        int[] prices = {450, 500, 550, 700, 750, 800};
+        // 기본 음료 이름과 가격 설정
+        String[] names = {
+                "물",         // 0 → /image/0.jpg
+                "캔커피",     // 1 → /image/1.jpg
+                "이온음료",   // 2 → /image/2.jpg
+                "고급캔커피", // 3 → /image/3.jpg
+                "탄산음료",   // 4 → /image/4.jpg
+                "특화음료",   // 5 → /image/5.jpg
+                "믹스커피",   // 6 → /image/6.jpg
+                "고급믹스커피"// 7 → /image/7.jpg
+        };
+
+        int[] prices = {
+                450, 500, 550, 700,
+                750, 800, 200, 300
+        };
+
 
         for (int i = 0; i < names.length; i++) {
             insertDrink(vmNumber, i, names[i], prices[i]);
         }
     }
+
 
 
     // ----------------- operations -----------------
@@ -637,6 +653,29 @@ public class MongoDBManager {
             e.printStackTrace();
         }
         return null;
+    }
+
+    public void insertAdditionalDrinksIfMissing(String vmNumber) {
+        try {
+            List<Document> existing = getAllDrinks(vmNumber);
+            Set<String> existingNames = new HashSet<>();
+
+            for (Document doc : existing) {
+                String name = EncryptionUtil.decrypt(doc.getString("name"));
+                existingNames.add(name);
+            }
+
+            if (!existingNames.contains("믹스커피")) {
+                insertDrink(vmNumber, 6, "믹스커피", 200); // ID 6
+            }
+
+            if (!existingNames.contains("고급믹스커피")) {
+                insertDrink(vmNumber, 7, "고급믹스커피", 300); // ID 7
+            }
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
 

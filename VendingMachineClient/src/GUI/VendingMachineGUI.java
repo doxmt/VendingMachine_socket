@@ -64,6 +64,8 @@ public class VendingMachineGUI extends JFrame {
 
         MongoDBManager dbManager = MongoDBManager.getInstance();
         dbManager.initializeAdminPasswordIfAbsent(vmNumber);
+        dbManager.insertAdditionalDrinksIfMissing(vmNumber);
+
 
         try {
             String encryptedPw = dbManager.getAdminPassword(vmNumber); // MongoDB에서 가져오기
@@ -132,7 +134,7 @@ public class VendingMachineGUI extends JFrame {
 
     private JPanel createMainPanel() {
         JPanel p1 = new JPanel();
-        GridLayout gridLayout = new GridLayout(3, 2); // 이미지를 3x2로 배치
+        GridLayout gridLayout = new GridLayout(4, 2); // 이미지를 4x2로 배치
         gridLayout.setVgap(20); // 세로 간격 설정
         gridLayout.setHgap(20); // 가로 간격 설정
         p1.setLayout(gridLayout);
@@ -141,7 +143,7 @@ public class VendingMachineGUI extends JFrame {
         Border border1 = new MatteBorder(15, 15, 15, 15, Color.BLACK); // p1의 테두리 설정
         p1.setBorder(border1);
 
-        drinkButtons = new JButton[6];
+        drinkButtons = new JButton[8];
 
         // 이미지를 p1 패널에 추가
         addDrinkToPanel(p1, "/image/0.jpg", drinks[0], 0);
@@ -150,6 +152,9 @@ public class VendingMachineGUI extends JFrame {
         addDrinkToPanel(p1, "/image/3.jpg", drinks[3], 3);
         addDrinkToPanel(p1, "/image/4.jpg", drinks[4], 4);
         addDrinkToPanel(p1, "/image/5.jpg", drinks[5], 5);
+        addDrinkToPanel(p1, "/image/6.jpg", drinks[6], 6);
+        addDrinkToPanel(p1, "/image/7.jpg", drinks[7], 7);
+
 
         return p1;
     }
@@ -404,6 +409,12 @@ public class VendingMachineGUI extends JFrame {
                         break;
                     case 5:
                         imagePath = "/image/5_5.png";
+                        break;
+                    case 6:
+                        imagePath = "/image/black.jpg";
+                        break;
+                    case 7:
+                        imagePath = "/image/black.jpg";
                         break;
                     default:
                         imagePath = "/image/black.jpg";
