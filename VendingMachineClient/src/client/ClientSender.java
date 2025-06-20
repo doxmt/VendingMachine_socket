@@ -31,7 +31,6 @@ public class ClientSender {
         } finally {
             try {
                 if (socket != null && !socket.isClosed()) {
-                    System.out.println("[클라이언트] 연결 종료됨: " + socket.getInetAddress());
                     socket.close();
                 }
             } catch (Exception ignore) {}

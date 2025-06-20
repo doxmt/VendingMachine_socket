@@ -39,7 +39,7 @@ function encryptAES(text) {
 // MongoClient 전역 생성 및 한 번 연결
 const mongoClient = new MongoClient(MONGO_URI);
 
-async function startBackupApp(port, label) {
+function startBackupApp(port, label) {
   const app = express();
   app.use(express.static(path.join(__dirname, 'public')));
   app.use(express.json());

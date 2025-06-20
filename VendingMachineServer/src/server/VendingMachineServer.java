@@ -23,33 +23,33 @@ import java.util.stream.Collectors;
 public class VendingMachineServer {
     private static final int PORT = 9999;
     // ⚠️ Server1은 9201, Server2는 9202로 설정
-    private static final int SYNC_PORT = 9201;  // Server1이면 9201, Server2는 9202
-
-    public static void startSyncListener() {
-        new Thread(() -> {
-            try (ServerSocket syncServer = new ServerSocket(SYNC_PORT)) {
-                System.out.println("[동기화 리스너] SYNC 포트 열림: " + SYNC_PORT);
-                while (true) {
-                    Socket client = syncServer.accept();
-                    byte[] buf = new byte[64];
-                    int len = client.getInputStream().read(buf);
-                    String msg = new String(buf, 0, len);
-                    if ("PING".equals(msg)) {
-                        client.getOutputStream().write("PONG".getBytes());
-                    }
-                    client.close();
-                }
-            } catch (IOException e) {
-                System.err.println("[동기화 리스너] 오류:");
-                e.printStackTrace();
-            }
-        }).start();
-    }
+//    private static final int SYNC_PORT = 9201;  // Server1이면 9201, Server2는 9202
+//
+//    public static void startSyncListener() {
+//        new Thread(() -> {
+//            try (ServerSocket syncServer = new ServerSocket(SYNC_PORT)) {
+//                System.out.println("[동기화 리스너] SYNC 포트 열림: " + SYNC_PORT);
+//                while (true) {
+//                    Socket client = syncServer.accept();
+//                    byte[] buf = new byte[64];
+//                    int len = client.getInputStream().read(buf);
+//                    String msg = new String(buf, 0, len);
+//                    if ("PING".equals(msg)) {
+//                        client.getOutputStream().write("PONG".getBytes());
+//                    }
+//                    client.close();
+//                }
+//            } catch (IOException e) {
+//                System.err.println("[동기화 리스너] 오류:");
+//                e.printStackTrace();
+//            }
+//        }).start();
+//    }
 
 
     public static void main(String[] args) {
         new VendingMachineServer().startServer();
-        startSyncListener();
+//        startSyncListener();
     }
 
     public void startServer() {
@@ -96,8 +96,8 @@ public class VendingMachineServer {
                 }
             }
             // 🔁 동기화 전송 대상 서버 설정 (예: 내가 Server1이면 Server2로 보냄)
-            String syncTargetHost = "localhost";
-            int syncTargetPort = 9202; // 필요시 9201로 변경 (이 서버가 Server2일 경우)
+//            String syncTargetHost = "localhost";
+//            int syncTargetPort = 9202; // 필요시 9201로 변경 (이 서버가 Server2일 경우)
 
 
             // 데이터 타입별 저장 처리
@@ -106,24 +106,24 @@ public class VendingMachineServer {
                 case "sale":
                     System.out.println("[서버] 매출 데이터 저장 시도");
                     ServerMongoDBManager.getInstance().insertEncryptedSale(receivedData);
-                    SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
+//                    SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
                     break;
                 case "drink":
                     System.out.println("[서버] 음료 데이터 저장 시도");
                     ServerMongoDBManager.getInstance().insertOrUpdateEncryptedDrink(receivedData);
-                    SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
+//                    SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
                     break;
                 case "inventory":
                     System.out.println("[서버] 재고 데이터 저장 시도");
                     ServerMongoDBManager.getInstance().insertOrUpdateEncryptedInventory(receivedData);
-                    SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
+//                    SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
                     break;
                 case "drinkRename":
                     String oldName = receivedData.get("oldName");
                     String newName = receivedData.get("newName");
                     try {
                         ServerMongoDBManager.getInstance().updateDrinkNameEverywhere(vmNumber, oldName, newName);
-                        SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
+//                        SyncSender.send(syncTargetHost, syncTargetPort, receivedData);
                         System.out.println("[서버] 음료 이름 변경 처리 완료");
                     } catch (Exception e) {
                         System.err.println("[서버] 음료 이름 변경 처리 중 오류 발생:");
@@ -135,8 +135,7 @@ public class VendingMachineServer {
             }
 
         } catch (Exception e) {
-            System.err.println("[서버] 클라이언트 처리 중 오류:");
-            e.printStackTrace();
+            System.err.println(" ");
         } finally {
             try {
                 clientSocket.close();
